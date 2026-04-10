@@ -1,11 +1,16 @@
 # Build artifacts
+BadDock
 Calculator
 GenIcon
+GenBall
 icon_1024.png
+ball_1024.png
 AppIcon.iconset/
+BallIcon.iconset/
 DockPlugin.dylib
 
 # App bundle (built, not source)
+BadDock.app/
 Calculator.app/
 
 # macOS

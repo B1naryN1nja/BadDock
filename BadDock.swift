@@ -2,7 +2,7 @@ import SwiftUI
 import AVFoundation
 
 @main
-struct CalculatorApp: App {
+struct BadDockApp: App {
     init() {
         let searchPaths = [
             Bundle.main.url(forResource: "badapple", withExtension: "mp4")?.path,
