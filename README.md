@@ -1,6 +1,8 @@
-# Dock Icon Escape
+# Bad Dock
 
-A native macOS SwiftUI calculator app demonstrating how to bypass the macOS squircle icon mask using `NSDockTilePlugin` — and how far you can push it.
+A native macOS SwiftUI app demonstrating how to bypass the macOS squircle icon mask using `NSDockTilePlugin` — and how far you can push it (including playing Bad Apple in the Dock icon).
+
+![Bad Apple playing in the macOS Dock](demo.gif)
 
 Since macOS Big Sur, all app icons are forced into a rounded square ("squircle") shape. This project shows how to escape that using Apple's own APIs, and explores what else is possible once you're out.
 
