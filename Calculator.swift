@@ -3,9 +3,9 @@ import SwiftUI
 @main
 struct CalculatorApp: App {
     init() {
-        if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+        if let iconURL = Bundle.main.url(forResource: "BallIcon", withExtension: "icns"),
            let icon = NSImage(contentsOf: iconURL) {
-            NSApplication.shared.applicationIconImage = icon
+            DockAnimator.shared.start(icon: icon)
         }
     }
 
@@ -20,147 +20,118 @@ struct CalculatorApp: App {
 }
 
 struct CalculatorView: View {
-    @State private var display = "0"
-    @State private var currentNumber: Double = 0
-    @State private var previousNumber: Double = 0
-    @State private var operation: String? = nil
-    @State private var resetDisplay = false
-    @State private var activeOp: String? = nil
-
-    let buttons: [[String]] = [
-        ["C", "±", "%", "÷"],
-        ["7", "8", "9", "×"],
-        ["4", "5", "6", "−"],
-        ["1", "2", "3", "+"],
-        ["0", ".", "="]
-    ]
-
     var body: some View {
-        VStack(spacing: 8) {
-            // Display
-            Text(display)
-                .font(.system(size: 40, weight: .light, design: .default))
+        VStack(spacing: 12) {
+            Text("Bouncing Ball")
+                .font(.system(size: 18, weight: .medium))
                 .foregroundColor(.primary)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .padding(.horizontal, 16)
-                .padding(.top, 20)
-                .lineLimit(1)
-                .minimumScaleFactor(0.5)
-
-            // Buttons
-            ForEach(buttons, id: \.self) { row in
-                HStack(spacing: 8) {
-                    ForEach(row, id: \.self) { button in
-                        Button(action: { tap(button) }) {
-                            Text(button)
-                                .font(.system(size: 20, weight: .medium))
-                                .frame(
-                                    width: button == "0" ? 116 : 52,
-                                    height: 52
-                                )
-                                .background(buttonColor(button))
-                                .foregroundColor(buttonTextColor(button))
-                                .cornerRadius(26)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
+            Text("Watch the dock icon")
+                .font(.system(size: 14))
+                .foregroundColor(.secondary)
         }
-        .padding(12)
+        .padding(24)
     }
+}
 
-    func buttonColor(_ button: String) -> Color {
-        if ["÷", "×", "−", "+", "="].contains(button) {
-            return button == activeOp ? .white : .orange
-        }
-        if ["C", "±", "%"].contains(button) {
-            return Color(nsColor: .systemGray).opacity(0.5)
-        }
-        return Color(nsColor: .systemGray).opacity(0.25)
-    }
+class DockAnimator {
+    static let shared = DockAnimator()
+    private var timer: Timer?
 
-    func buttonTextColor(_ button: String) -> Color {
-        if ["÷", "×", "−", "+", "="].contains(button) {
-            return button == activeOp ? .orange : .white
-        }
-        return .primary
-    }
+    // Physics
+    private var y: CGFloat = 0.8       // position (0 = bottom, 1 = top)
+    private var vy: CGFloat = 0         // velocity
+    private let gravity: CGFloat = -2.5
+    private let bounceDamping: CGFloat = 0.75
+    private let dt: CGFloat = 1.0 / 30.0
 
-    func tap(_ button: String) {
-        switch button {
-        case "C":
-            display = "0"
-            currentNumber = 0
-            previousNumber = 0
-            operation = nil
-            activeOp = nil
-            resetDisplay = false
-        case "±":
-            if let val = Double(display) {
-                currentNumber = -val
-                display = formatNumber(currentNumber)
-            }
-        case "%":
-            if let val = Double(display) {
-                currentNumber = val / 100
-                display = formatNumber(currentNumber)
-            }
-        case "÷", "×", "−", "+":
-            if let val = Double(display) {
-                if operation != nil && !resetDisplay {
-                    previousNumber = calculate(previousNumber, val, operation!)
-                    display = formatNumber(previousNumber)
-                } else {
-                    previousNumber = val
-                }
-            }
-            operation = button
-            activeOp = button
-            resetDisplay = true
-        case "=":
-            if let op = operation, let val = Double(display) {
-                let result = calculate(previousNumber, val, op)
-                display = formatNumber(result)
-                previousNumber = result
-                operation = nil
-                activeOp = nil
-                resetDisplay = true
-            }
-        case ".":
-            if resetDisplay {
-                display = "0."
-                resetDisplay = false
-                activeOp = nil
-            } else if !display.contains(".") {
-                display += "."
-            }
-        default: // digits
-            if display == "0" || resetDisplay {
-                display = button
-                resetDisplay = false
-                activeOp = nil
-            } else {
-                display += button
-            }
+    // Squish
+    private var squishAmount: CGFloat = 0  // 0 = normal, 1 = max squish
+    private var squishDecay: CGFloat = 0.8
+
+    func start(icon: NSImage) {
+        timer = Timer.scheduledTimer(withTimeInterval: TimeInterval(dt), repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            self.step()
+            self.render(icon: icon)
         }
     }
 
-    func calculate(_ a: Double, _ b: Double, _ op: String) -> Double {
-        switch op {
-        case "÷": return b != 0 ? a / b : 0
-        case "×": return a * b
-        case "−": return a - b
-        case "+": return a + b
-        default: return b
+    private func step() {
+        vy += gravity * dt
+        y += vy * dt
+
+        // Hit the floor
+        if y <= 0 {
+            y = 0
+            let impactSpeed = abs(vy)
+            vy = -vy * bounceDamping
+            // Squish proportional to impact speed
+            squishAmount = min(0.5, impactSpeed * 0.3)
+        }
+
+        // Decay squish
+        squishAmount *= squishDecay
+        if squishAmount < 0.01 { squishAmount = 0 }
+
+        // Reset when ball has nearly stopped
+        if y <= 0.01 && abs(vy) < 0.1 {
+            y = 1.0
+            vy = 0
         }
     }
 
-    func formatNumber(_ number: Double) -> String {
-        if number == number.rounded() && abs(number) < 1e15 {
-            return String(format: "%.0f", number)
-        }
-        let s = String(number)
-        return s.count > 12 ? String(format: "%.6g", number) : s
+    private func render(icon: NSImage) {
+        let dockTile = NSApplication.shared.dockTile
+        let ts = dockTile.size
+        let ballSize: CGFloat = ts.width * 0.55
+
+        // Squish: stretch width, compress height
+        let sx: CGFloat = 1.0 + squishAmount       // wider
+        let sy: CGFloat = 1.0 - squishAmount * 0.8 // shorter
+
+        let drawW = ballSize * sx
+        let drawH = ballSize * sy
+
+        // Y position: 0 = bottom of tile, map to pixel coords
+        let floor: CGFloat = 4
+        let ceiling: CGFloat = ts.height - drawH - 4
+        let drawY = floor + y * (ceiling - floor)
+
+        // Center horizontally
+        let drawX = (ts.width - drawW) / 2
+
+        // Render
+        let frame = NSImage(size: ts)
+        frame.lockFocus()
+
+        // Dark background
+        NSColor(red: 0.12, green: 0.12, blue: 0.14, alpha: 1.0).setFill()
+        NSBezierPath(roundedRect: NSRect(x: 0, y: 0, width: ts.width, height: ts.height),
+                     xRadius: ts.width * 0.22, yRadius: ts.height * 0.22).fill()
+
+        // Shadow under ball
+        let shadowAlpha = 0.4 * (1.0 - y * 0.7)
+        let shadowW = drawW * (1.0 - y * 0.3)
+        let shadowH: CGFloat = 6
+        NSColor(white: 0, alpha: shadowAlpha).setFill()
+        let shadowRect = NSRect(
+            x: (ts.width - shadowW) / 2,
+            y: floor - 2,
+            width: shadowW,
+            height: shadowH
+        )
+        NSBezierPath(ovalIn: shadowRect).fill()
+
+        // Draw the icon as the ball
+        icon.draw(in: NSRect(x: drawX, y: drawY, width: drawW, height: drawH),
+                  from: .zero, operation: .sourceOver, fraction: 1.0)
+
+        frame.unlockFocus()
+
+        let imageView = NSImageView(frame: NSRect(origin: .zero, size: ts))
+        imageView.image = frame
+        imageView.imageScaling = .scaleNone
+        dockTile.contentView = imageView
+        dockTile.display()
     }
 }

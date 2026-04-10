@@ -9,7 +9,7 @@ import AppKit
         if let appBundlePath = bundle.bundlePath
             .components(separatedBy: "Contents/PlugIns")
             .first,
-           let icon = NSImage(contentsOfFile: appBundlePath + "Contents/Resources/AppIcon.icns") {
+           let icon = NSImage(contentsOfFile: appBundlePath + "Contents/Resources/BallIcon.icns") {
 
             let view = NSImageView(frame: NSRect(x: 0, y: 0,
                                                   width: dockTile.size.width,
