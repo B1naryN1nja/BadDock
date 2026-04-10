@@ -1,0 +1,12 @@
+# Build artifacts
+Calculator
+GenIcon
+icon_1024.png
+AppIcon.iconset/
+DockPlugin.dylib
+
+# App bundle (built, not source)
+Calculator.app/
+
+# macOS
+.DS_Store
