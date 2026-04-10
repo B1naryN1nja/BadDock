@@ -100,14 +100,15 @@ class DockVideoPlayer {
             NSColor.black.setFill()
             NSBezierPath.fill(NSRect(x: 0, y: 0, width: dockSize, height: dockSize))
 
+            // Crop to fill — scale up to cover the square, clip the overflow
             let aspect = CGFloat(w) / CGFloat(h)
             let drawW: CGFloat, drawH: CGFloat
             if aspect > 1 {
-                drawW = CGFloat(dockSize)
-                drawH = CGFloat(dockSize) / aspect
-            } else {
                 drawH = CGFloat(dockSize)
                 drawW = CGFloat(dockSize) * aspect
+            } else {
+                drawW = CGFloat(dockSize)
+                drawH = CGFloat(dockSize) / aspect
             }
             let drawX = (CGFloat(dockSize) - drawW) / 2
             let drawY = (CGFloat(dockSize) - drawH) / 2
