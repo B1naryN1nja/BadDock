@@ -30,11 +30,16 @@ By setting `dockTile.contentView` to a view with subviews larger than the tile s
 The squircle is inscribed within the tile's square bounds, and the ~20% extra is what it takes to cover the rounded corners. **1.2x is the effective max.**
 
 ### Animated dock icons
-The Dock happily redraws the tile on every `dockTile.display()` call. By running a `Timer` at 30fps and updating the `contentView` each frame, you get a smoothly animated dock icon. The current implementation pulses the icon between 0.5x and 3.0x scale using a sine wave:
+The Dock happily redraws the tile on every `dockTile.display()` call. By running a `Timer` at 30fps and updating the `contentView` each frame, you get a smoothly animated dock icon.
 
-```swift
-let scale = 1.75 + 1.25 * sin(phase) // oscillates 0.5x to 3.0x
-```
+The current implementation is a bouncing ball with real physics:
+- **Gravity** pulls the ball down
+- **Squish on impact** — ball stretches horizontally and compresses vertically on bounce, proportional to impact speed
+- **Bounce damping** — each bounce loses 25% energy
+- **Dynamic shadow** — shrinks and fades as the ball rises
+- **Auto-loop** — when the ball runs out of energy, it resets to the top and drops again
+
+Key gotcha: using `applicationIconImage` and `dockTile.contentView` simultaneously causes **flickering**. Stick to one method. `contentView` is better for animation since it avoids the icon cache entirely.
 
 This works because `NSDockTile` is essentially a free canvas — Apple never locked down what you can render into it. The API was designed for progress bars, but nothing stops you from running arbitrary animations.
 
@@ -92,9 +97,10 @@ open Calculator.app
 
 ## Files
 
-- `Calculator.swift` — SwiftUI calculator app with runtime icon override
+- `Calculator.swift` — SwiftUI app with bouncing ball dock icon animation
 - `DockPlugin.swift` — `NSDockTilePlugin` implementation for persistent dock icon
 - `GenIcon.swift` — CoreGraphics script that generates the calculator icon
+- `GenBall.swift` — CoreGraphics script that generates the red rubber ball icon
 
 ## Credit
 
