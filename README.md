@@ -1,108 +1,101 @@
 # Bad Dock
 
-A native macOS SwiftUI app demonstrating how to bypass the macOS squircle icon mask using `NSDockTilePlugin` — and how far you can push it (including playing Bad Apple in the Dock icon).
+Playing Bad Apple (or any video) inside a macOS Dock icon — no private APIs, no Xcode, just `swiftc`.
 
 ![Bad Apple playing in the macOS Dock](demo.gif)
 
-Since macOS Big Sur, all app icons are forced into a rounded square ("squircle") shape. This project shows how to escape that using Apple's own APIs, and explores what else is possible once you're out.
+## What is this?
 
-## How It Works
+Since macOS Big Sur, all app icons are jailed inside a rounded square ("squircle") mask. This project escapes that jail using Apple's `NSDockTile` API from 2009, then pushes it as far as it can go — ultimately streaming a full video into a tiny Dock icon at 12fps.
 
-1. **Runtime icon** — `NSApplication.shared.applicationIconImage` sets a custom-shaped icon while the app is running
-2. **Persistent icon** — A `NSDockTilePlugin` bundle loads in the Dock's process, keeping the custom icon even when the app is closed
-3. **Animated icon** — `NSDockTile.contentView` + `dockTile.display()` on a timer enables real-time dock icon animation
+The entire app is built from the command line with `swiftc`. No Xcode project, no storyboards, no nib files.
 
-The `NSDockTile` API has existed since Mac OS X 10.6 Snow Leopard, originally intended for things like CD burn progress overlays. It still works today and is how apps like Cyberduck maintain custom icon shapes.
+## The journey
 
-## Findings
+### 1. Escaping the squircle
+Setting `NSApplication.shared.applicationIconImage` at runtime bypasses the squircle mask. The Dock renders whatever image you give it — no rounded square clipping. However, this only works while the app is running.
 
-### Escaping the squircle
-Setting `NSApplication.shared.applicationIconImage` at runtime bypasses the squircle mask entirely. The Dock renders whatever image you give it — no rounded square clipping. However, this only works while the app is running. For persistence when the app is closed, you need a `NSDockTilePlugin`.
+### 2. Making it persist when closed
+For the custom icon to survive quitting the app, you need a `NSDockTilePlugin` — a tiny dylib bundle that macOS loads into the Dock's own process (`com.apple.dock.external`). It lives in `Contents/PlugIns/` inside the `.app` bundle and runs independently.
 
-### Oversized icons — max bounds
-By setting `dockTile.contentView` to a view with subviews larger than the tile size, the icon can overflow its bounds. macOS clips at the **full square tile boundary** (not the squircle). Testing with a red border and manual scale controls:
+### 3. Finding the max bounds
+We built a manual scale tester (+ / - buttons) with a red border overlay to find where macOS clips. The squircle is inscribed within the tile's square bounds:
 
 | Scale | Result |
 |-------|--------|
 | 1.0x  | Fills the squircle shape |
-| 1.1x  | Mostly fills the square, squircle corners still slightly visible |
-| 1.2x  | Completely fills the square tile bounds |
-| >1.2x | Clipped — no visual change |
+| 1.1x  | Mostly fills the square, corners still visible |
+| 1.2x  | Completely fills the square tile |
+| >1.2x | Clipped, no visual change |
 
-The squircle is inscribed within the tile's square bounds, and the ~20% extra is what it takes to cover the rounded corners. **1.2x is the effective max.**
+**1.2x is the effective max.** The ~20% extra covers the rounded corners.
 
-### Animated dock icons
-The Dock happily redraws the tile on every `dockTile.display()` call. By running a `Timer` at 30fps and updating the `contentView` each frame, you get a smoothly animated dock icon.
+### 4. Animating the icon
+The Dock redraws the tile on every `dockTile.display()` call. We ran a `Timer` at 30fps and built a bouncing ball with physics — gravity, squish on impact, bounce damping, and a dynamic shadow. It worked smoothly.
 
-The current implementation is a bouncing ball with real physics:
-- **Gravity** pulls the ball down
-- **Squish on impact** — ball stretches horizontally and compresses vertically on bounce, proportional to impact speed
-- **Bounce damping** — each bounce loses 25% energy
-- **Dynamic shadow** — shrinks and fades as the ball rises
-- **Auto-loop** — when the ball runs out of energy, it resets to the top and drops again
+Key gotcha discovered: using `applicationIconImage` and `dockTile.contentView` simultaneously causes **flickering**. Stick to one method — `contentView` is better for animation.
 
-Key gotcha: using `applicationIconImage` and `dockTile.contentView` simultaneously causes **flickering**. Stick to one method. `contentView` is better for animation since it avoids the icon cache entirely.
+### 5. Playing Bad Apple in the Dock
 
-This works because `NSDockTile` is essentially a free canvas — Apple never locked down what you can render into it. The API was designed for progress bars, but nothing stops you from running arbitrary animations.
+The final boss. The challenge was streaming a 5.5 minute video into a Dock icon without killing memory or dropping frames.
 
-### What this means
-The Dock is more flexible than it appears. With a 17-year-old API and no private frameworks, you can:
-- Render any shape (escape the squircle)
-- Overflow the tile bounds (oversized icons)
-- Animate at 30fps (pulsing, spinning, bouncing, etc.)
-- Persist custom icons when the app is closed (`NSDockTilePlugin`)
+**Attempt 1 — Preload all frames into memory:** Extracted every frame with `AVAssetReader`, converted to `NSImage`, stored in an array. Worked briefly then crashed — ~3,900 frames of 128x128 images ate all available RAM.
 
-None of this is allowed on the Mac App Store — `NSDockTilePlugin` is restricted to direct distribution only.
+**Attempt 2 — JPEG-compressed frame storage:** Same preload approach but compressed each frame to JPEG bytes (~3-5KB vs ~65KB raw). Better, but still loaded everything before playing and grew memory linearly.
+
+**Attempt 3 — Streaming ring buffer (final):** Producer-consumer pattern with a 60-frame ring buffer (~5 seconds ahead). Background thread decodes frames with `AVAssetReader` + `CIContext`, compresses to JPEG, and pushes into the buffer. The main thread pops and renders at 12fps. Frames are freed immediately after display. When the video ends, the producer restarts from the beginning for seamless looping. Memory stays flat at ~80MB.
+
+Other things we figured out along the way:
+- **Crop to fill** instead of letterboxing — the 4:3 video had black bars in a square tile until we flipped the aspect ratio scaling to fill and clip rather than fit
+- **Reuse `CIContext`** — creating one per frame caused significant overhead
+- **Every 2nd frame** is enough — extracting at half the source framerate (12fps from 24fps source) looks smooth at Dock icon size
+- **Ad-hoc code signing** is required for macOS to respect the app bundle's icon and plugin
 
 ## Building
 
 No Xcode required — just `swiftc` and the command line.
 
 ```bash
-# Generate the app icon
-swift GenIcon.swift
-
-# Create the .app bundle
-mkdir -p Calculator.app/Contents/MacOS
-mkdir -p Calculator.app/Contents/Resources
-mkdir -p Calculator.app/Contents/PlugIns/DockPlugin.docktileplugin/Contents/MacOS
+# Create the .app bundle structure
+mkdir -p BadDock.app/Contents/MacOS
+mkdir -p BadDock.app/Contents/Resources
+mkdir -p BadDock.app/Contents/PlugIns/DockPlugin.docktileplugin/Contents/MacOS
 
 # Compile the app
-swiftc -parse-as-library -o Calculator.app/Contents/MacOS/Calculator Calculator.swift \
-    -framework SwiftUI -framework AppKit
+swiftc -parse-as-library -o BadDock.app/Contents/MacOS/BadDock BadDock.swift \
+    -framework SwiftUI -framework AppKit -framework AVFoundation -framework CoreImage
 
 # Compile the dock tile plugin
 swiftc -parse-as-library -module-name DockPlugin DockPlugin.swift \
-    -o Calculator.app/Contents/PlugIns/DockPlugin.docktileplugin/Contents/MacOS/DockPlugin \
+    -o BadDock.app/Contents/PlugIns/DockPlugin.docktileplugin/Contents/MacOS/DockPlugin \
     -Xlinker -dylib -Xlinker -undefined -Xlinker suppress -Xlinker -flat_namespace \
     -framework AppKit
 
-# Convert icon to icns
-mkdir -p AppIcon.iconset
-for sz in 16 32 64 128 256 512 1024; do
-    sips -z $sz $sz icon_1024.png --out AppIcon.iconset/icon_${sz}x${sz}.png
-done
-for sz in 16 32 128 256 512; do
-    dbl=$((sz*2))
-    cp AppIcon.iconset/icon_${dbl}x${dbl}.png AppIcon.iconset/icon_${sz}x${sz}@2x.png
-done
-iconutil -c icns AppIcon.iconset -o Calculator.app/Contents/Resources/AppIcon.icns
+# Copy the video into Resources
+cp badapple.mp4 BadDock.app/Contents/Resources/
 
 # Code sign
-codesign --force --sign - Calculator.app/Contents/PlugIns/DockPlugin.docktileplugin
-codesign --force --deep --sign - Calculator.app
+codesign --force --sign - BadDock.app/Contents/PlugIns/DockPlugin.docktileplugin
+codesign --force --deep --sign - BadDock.app
 
 # Register and launch
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f Calculator.app
-open Calculator.app
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f BadDock.app
+open BadDock.app
 ```
 
 ## Files
 
-- `Calculator.swift` — SwiftUI app with bouncing ball dock icon animation
-- `DockPlugin.swift` — `NSDockTilePlugin` implementation for persistent dock icon
-- `GenIcon.swift` — CoreGraphics script that generates the calculator icon
-- `GenBall.swift` — CoreGraphics script that generates the red rubber ball icon
+- `BadDock.swift` — SwiftUI app that streams video into the Dock icon via a ring buffer
+- `DockPlugin.swift` — `NSDockTilePlugin` for persistent custom icon when app is closed
+- `GenIcon.swift` — CoreGraphics script that generates a calculator icon
+- `GenBall.swift` — CoreGraphics script that generates a red rubber ball icon
+- `badapple.mp4` — The video file (Bad Apple)
+
+## Notes
+
+- `NSDockTilePlugin` is **not allowed on the Mac App Store** — direct distribution only
+- The `NSDockTile` API has existed since Mac OS X 10.6 Snow Leopard (2009)
+- No private frameworks are used — everything is public AppKit/AVFoundation API
 
 ## Credit
 
