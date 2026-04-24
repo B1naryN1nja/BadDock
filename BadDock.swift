@@ -25,9 +25,10 @@ struct BadDockApp: App {
                 Text("Bad Apple")
                     .font(.system(size: 20, weight: .bold, design: .monospaced))
                     .foregroundColor(.primary)
-                Text("Now playing in your Dock")
+                Text("is now playing in your Dock.")
                     .font(.system(size: 14))
                     .foregroundColor(.secondary)
+                //update grammer
             }
             .padding(24)
             .frame(width: 300, height: 120)
