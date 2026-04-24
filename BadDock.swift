@@ -32,7 +32,7 @@ struct BadDockApp: App {
             }
             .padding(24)
             .frame(width: 300, height: 120)
-            .background(Color(nsColor: .windowBackgroundColor))
+            // Removed b/c it is not needed .background(Color(nsColor: .windowBackgroundColor)
         }
         .windowResizability(.contentSize)
     }
